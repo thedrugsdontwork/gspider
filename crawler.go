@@ -1,5 +1,8 @@
 package GSpider
 
+//todo 1.添加日志收集器
+//todo 2.优化cache阈值缓存本地
+//todo 3.添加下载统计（定时）
 import (
 	"fmt"
 	"sync"
@@ -19,11 +22,11 @@ type crawler interface {
 	/*
 		初始化线程池
 	*/
-	Init(poolSize int)
+	Init(spiderSize int)
 	/*
 		用于获取线程池大小
 	*/
-	GetPoolSize() int
+	GetspiderSize() int
 	/*
 		注册请求前置处理中间件
 	*/
@@ -47,7 +50,8 @@ type crawler interface {
 }
 
 type Crawler struct {
-	poolSize            int
+	spiderSize          int32
+	parserSize          int32
 	crawlerName         string
 	requestMiddlewares  []*RequestMiddleware
 	responseMiddlewares []*ResponseMiddleware
@@ -64,17 +68,26 @@ type Crawler struct {
 	parIngCounter       int32
 	wg                  sync.WaitGroup
 	signal              _signal
+	reqCache            *BaseReqCache
+	resCache            *BaseResCache
 }
 
-func (c *Crawler) Init(crawlerName string, poolSize int) {
-	c.poolSize = 4
+func (c *Crawler) Init(crawlerName string, spiderSize int32, parserSize int32) {
+	c.spiderSize = spiderSize
+	c.parserSize = parserSize
 	c.crawlerName = crawlerName
-	c.requests = make(chan *BaseRequestObj, 100)
-	c.responses = make(chan *BaseResponseObj, 100)
+	c.requests = make(chan *BaseRequestObj, spiderSize)
+	c.responses = make(chan *BaseResponseObj, parserSize)
+	c.reqCache = &BaseReqCache{
+		size: 0,
+	}
+	c.resCache = &BaseResCache{
+		size: 0,
+	}
 
 }
-func (c *Crawler) GetPoolSize() int {
-	return c.poolSize
+func (c *Crawler) GetspiderSize() int32 {
+	return c.spiderSize
 }
 func (c *Crawler) RegisterRequestMiddleware(middleWare *RequestMiddleware) {
 	c.requestMiddlewares = append(c.requestMiddlewares, middleWare)
@@ -98,25 +111,27 @@ func (c *Crawler) RegisterStartingRequest(f *(func() []*BaseRequestObj)) {
 	待请求发送后
 */
 func (c *Crawler) StartCrawl() {
-	fmt.Printf("Crawler %s has been running", c.crawlerName)
-	c.wg.Add(12)
-	var counter uint32 = 0
-	var reqs []*BaseRequestObj = (*c.startFunc)()
-	c.download()
+
 	submitRequest := func(reqs []*BaseRequestObj, cr *uint32) {
 		for _, req := range reqs {
 			if req != nil {
 				fmt.Printf("Add the request:%s\n", req.URL)
 				atomic.AddInt32(&c.requestsCurSize, 1)
 				fmt.Printf("Add int32:%s\n", req.URL)
-				c.requests <- req
+				c.reqCache.Store(req)
 				fmt.Printf("Add the request:%s\n", req.URL)
-
 				fmt.Printf("C++t:%s\n", req.URL)
 			}
 
 		}
 	}
+	fmt.Printf("Crawler %s has been running", c.crawlerName)
+	c.wg.Add(4 + int(c.parserSize))
+	var counter uint32 = 0
+	var reqs []*BaseRequestObj = (*c.startFunc)()
+	/*do downloading*/
+	c.download()
+
 	c.signal = WAITING
 	go func() {
 		submitRequest(reqs, &counter)
@@ -129,11 +144,10 @@ func (c *Crawler) StartCrawl() {
 	}
 
 	fmt.Printf("Start function total submit reuqest %d", counter)
-	/*do downloading*/
 
 	/*do parsing*/
 
-	for i := 0; i < 10; i++ {
+	for i := 0; i < int(c.parserSize); i++ {
 		go func() {
 
 			for res := range c.responses {
@@ -157,9 +171,38 @@ func (c *Crawler) StartCrawl() {
 			c.wg.Done()
 		}()
 	}
+	/*use to submit req to channel*/
+	go func() {
+		for c.signal != STOP {
+			//fmt.Printf("reqSize:%d,parseSize:%d\n", c.reqIngCounter, c.parIngCounter)
+			if atomic.LoadInt32(&c.reqIngCounter) >= c.spiderSize {
+				continue
+			}
+			req := c.reqCache.Load()
+			if req == nil {
+				continue
+			}
+			c.requests <- req
+		}
+		c.wg.Done()
+	}()
+	/*use to submit response to channel*/
+	go func() {
+		for c.signal != STOP {
+			if atomic.LoadInt32(&c.parIngCounter) >= c.parserSize {
+				continue
+			}
+			res := c.resCache.Load()
+			if res == nil {
+				continue
+			}
+			c.responses <- res
+		}
+		c.wg.Done()
+	}()
 	/*wait until stop && check if complete*/
 	go func() {
-		for c.signal != RUNNING || atomic.LoadInt32(&c.reqIngCounter) != 0 || atomic.LoadInt32(&c.parIngCounter) != 0 || atomic.LoadInt32(&c.requestsCurSize) != 0 || atomic.LoadInt32(&c.responseCurSize) != 0 {
+		for c.reqCache.size != 0 || c.resCache.size != 0 || c.signal != RUNNING || atomic.LoadInt32(&c.reqIngCounter) != 0 || atomic.LoadInt32(&c.parIngCounter) != 0 || atomic.LoadInt32(&c.requestsCurSize) != 0 || atomic.LoadInt32(&c.responseCurSize) != 0 {
 			fmt.Println(atomic.LoadInt32(&c.reqIngCounter), atomic.LoadInt32(&c.parIngCounter), atomic.LoadInt32(&c.requestsCurSize), atomic.LoadInt32(&c.responseCurSize))
 			time.Sleep(1 * time.Second)
 		}
@@ -167,6 +210,7 @@ func (c *Crawler) StartCrawl() {
 		c.ShutDown()
 		c.wg.Done()
 	}()
+
 	/*statistic all target*/
 	//go func() {
 	//
@@ -190,5 +234,6 @@ func (c *Crawler) ShutDown() {
 	fmt.Printf("Start close the channel response %d\n", c.responseCurSize)
 	close(c.responses)
 	fmt.Printf("Crawler %s has been closed", c.crawlerName)
+	c.signal = STOP
 
 }

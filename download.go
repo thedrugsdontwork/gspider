@@ -9,8 +9,8 @@ import (
 	crawl core
 */
 func (c *Crawler) download() {
-	c.wg.Add(c.poolSize)
-	for i := 0; i < c.poolSize; i++ {
+	c.wg.Add(int(c.spiderSize))
+	for i := 0; i < int(c.spiderSize); i++ {
 		go func() {
 			fmt.Println("Starting wait for get reuqest")
 			for req := range c.requests {
@@ -43,7 +43,8 @@ func (c *Crawler) download() {
 				}
 				if response != nil {
 					atomic.AddInt32(&c.responseCurSize, 1)
-					c.responses <- response
+					//c.responses <- response
+					c.resCache.Store(response)
 				}
 				atomic.AddInt32(&c.reqIngCounter, -1)
 			}

@@ -105,7 +105,7 @@ func StartRequest() []*BaseRequestObj {
 }
 func TestForCrawler() {
 	var crawler = Crawler{}
-	crawler.Init("TestForCrawler", 4)
+	crawler.Init("TestForCrawler", 4, 4)
 	var f = StartRequest
 	crawler.requests = make(chan *BaseRequestObj)
 	crawler.responses = make(chan *BaseResponseObj)
