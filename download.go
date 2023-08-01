@@ -1,7 +1,6 @@
 package GSpider
 
 import (
-	"fmt"
 	"sync/atomic"
 )
 
@@ -12,12 +11,11 @@ func (c *Crawler) download() {
 	c.wg.Add(int(c.spiderSize))
 	for i := 0; i < int(c.spiderSize); i++ {
 		go func() {
-			fmt.Println("Starting wait for get reuqest")
+			defer c.logger.Sync()
+
 			for req := range c.requests {
 				atomic.AddInt32(&c.requestsCurSize, -1)
 				atomic.AddInt32(&c.reqIngCounter, 1)
-				atomic.AddInt32(&c.rCounter, 1)
-
 				for _, rmw := range c.requestMiddlewares {
 					if req == nil {
 						break
@@ -28,9 +26,10 @@ func (c *Crawler) download() {
 					atomic.AddInt32(&c.reqIngCounter, -1)
 					continue
 				}
+				c.logger.Debug("Start " + req.Method + " url:" + req.URL)
 				res, err := req.Request.Execute(req.Method, req.URL)
 				if err != nil {
-					fmt.Println(err)
+					c.logger.Error(err.Error())
 					panic(err)
 				}
 				var response *BaseResponseObj = AssembleResponse(res, req)
@@ -42,9 +41,8 @@ func (c *Crawler) download() {
 					}
 				}
 				if response != nil {
-					atomic.AddInt32(&c.responseCurSize, 1)
-					//c.responses <- response
-					c.resCache.Store(response)
+					c.submitResponse(response)
+
 				}
 				atomic.AddInt32(&c.reqIngCounter, -1)
 			}

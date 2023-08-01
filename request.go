@@ -61,7 +61,6 @@ func (brc *BaseReqCache) Load() *BaseRequestObj {
 			pre.next = nil
 		}
 		brc.size--
-		fmt.Printf("brc size:%d", brc.size)
 		res = tmp.val
 	}
 	brc.m.Unlock()

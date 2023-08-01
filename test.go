@@ -2,29 +2,18 @@ package GSpider
 
 import (
 	"fmt"
-	"io/ioutil"
+	"go.uber.org/zap"
+	"os"
+	"sync"
 )
 
-//type Crawler struct {
-//	poolSize            int
-//	crawlerName         string
-//	requestMiddlewares  []*RequestMiddleware
-//	responseMiddlewares []*ResponseMiddleware
-//	reqMSize            int
-//	resMSize            int
-//	startFunc           *func() []*BaseRequestObj
-//	requests            chan *BaseRequestObj
-//	requestsCurSize     int32
-//	responses           chan *BaseResponseObj
-//	responseCurSize     int32
-//	signals             []_signal
-//	rCounter            int32
-//	reqIngCounter       int32
-//	parIngCounter       int32
-//	wg                  sync.WaitGroup
-//}
+var fp, _ = os.Create("test.json")
+var m = sync.Mutex{}
+
 func StartRequest() []*BaseRequestObj {
 	requests := []*BaseRequestObj{}
+	logger, _ := zap.NewProduction()
+
 	for i := 0; i < 100; i++ {
 		var tmp map[string]string = map[string]string{
 			"asda": "asdad",
@@ -32,30 +21,24 @@ func StartRequest() []*BaseRequestObj {
 		}
 		tmp["asdasdad001"] = "sadasdadadaaaa"
 		callback := func(obj *BaseResponseObj) []*BaseRequestObj {
-			fmt.Printf("Response successfully code:%d \n", obj.StatusCode)
-			fmt.Printf("Url is :%s\n", obj.Url)
+			defer fp.Sync()
+			defer logger.Sync()
+			logger.Info("Response successfully code:%d \n", zap.Int32("statusCode", int32(obj.StatusCode)))
+			logger.Info("Url is : " + obj.Url)
+			m.Lock()
+			fp.Write(obj.Content)
+			logger.Info("Response content ", zap.String("content", "write file ./test.json"))
+			m.Unlock()
+			logger.Info("Response content ", zap.ByteString("content", obj.Content))
 
-			err := ioutil.WriteFile("test.pdf", obj.Content, 755)
-			if err != nil {
-				panic(err)
-			}
-			//fmt.Printf("Response content is :%s", obj.Content)
-			fmt.Printf("Get local var :\n")
-			for key, val := range tmp {
-				fmt.Printf("%s:%s\n", key, val)
-			}
-			fmt.Println("end\n")
-			fmt.Printf("Add key local and val yes!\n")
-			tmp["local"] = "yes"
-			fmt.Printf("%s:%s\n", "local", tmp["local"])
 			if obj.Request.RetryTimes < 3 {
-				fmt.Printf("Retry times is %d start retry", obj.Request.RetryTimes)
+				logger.Warn("Retry times is %d start retry", zap.Int32("retryTimes", int32(obj.Request.RetryTimes)))
 				obj.Request.RetryTimes += 1
 				requests := []*BaseRequestObj{obj.Request}
 
 				return requests
 			}
-			fmt.Println("\nStop sumit request!!!")
+			logger.Info("Stop sumit request!!!")
 			return nil
 		}
 		//errback := func(obj *BaseResponseObj) {
@@ -103,14 +86,39 @@ func StartRequest() []*BaseRequestObj {
 	}
 	return requests
 }
+func process() *BaseResponseObj {
+	var res *BaseResponseObj
+	return res
+}
+
+type msdasdMW struct {
+	counter int32
+}
+
+func (obj *msdasdMW) process(r *BaseResponseObj) *BaseResponseObj {
+	var res *BaseResponseObj
+	res = r
+	obj.counter++
+	fmt.Printf("Current process in the res middle ware process total %d", obj.counter)
+	return res
+}
 func TestForCrawler() {
+
 	var crawler = Crawler{}
-	crawler.Init("TestForCrawler", 4, 4)
+	var mw *msdasdMW = &msdasdMW{
+		counter: 0,
+	}
+	//crawler.Init("TestForCrawler", 4, 4)
+	SpiderInit(&crawler, "TestForCrawler", 4, 4)
+	SetResponseMiddleware(&crawler, mw)
+	//SetRequestMiddleWares(&crawler,)
 	var f = StartRequest
-	crawler.requests = make(chan *BaseRequestObj)
-	crawler.responses = make(chan *BaseResponseObj)
-	crawler.RegisterStartingRequest(&f)
-	fmt.Printf("Start crawl\n")
-	crawler.StartCrawl()
+	SetStartingFunction(&crawler, &f)
+	Crawl(&crawler)
+	for crawler.signal != STOP {
+
+	}
+
+	fp.Close()
 
 }
