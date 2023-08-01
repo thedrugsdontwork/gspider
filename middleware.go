@@ -6,3 +6,6 @@ type RequestMiddleware interface {
 type ResponseMiddleware interface {
 	process(res *BaseResponseObj) *BaseResponseObj
 }
+
+type BaseReuqestMiddleware struct {
+}
