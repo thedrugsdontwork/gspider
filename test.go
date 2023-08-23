@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"go.uber.org/zap"
 	"os"
+	"strconv"
 	"sync"
 )
 
@@ -14,7 +15,7 @@ func StartRequest() []*BaseRequestObj {
 	requests := []*BaseRequestObj{}
 	logger, _ := zap.NewProduction()
 
-	for i := 0; i < 100; i++ {
+	for i := 0; i < 20; i++ {
 		var tmp map[string]string = map[string]string{
 			"asda": "asdad",
 			"name": "monkey",
@@ -67,7 +68,7 @@ func StartRequest() []*BaseRequestObj {
 		requestObj.Cookies = make(map[string]string, 0)
 		//requestObj.Proxy = map[string]string{"http": "http://127.0.0.1:8888"}
 		requestObj.Method = "GET"
-		requestObj.Url = "http://127.0.0.1/get"
+		requestObj.Url = "http://www.baidu.com"
 		//https://sci.bban.top/pdf/10.3390/md16040118.pdf?download=true
 		var request = requestObj.AssembleRequest()
 		fmt.Println("header is :\n")
@@ -105,12 +106,12 @@ func (obj *msdasdMW) process(r *BaseResponseObj) *BaseResponseObj {
 func TestForCrawler() {
 
 	var crawler = Crawler{}
-	var mw *msdasdMW = &msdasdMW{
-		counter: 0,
-	}
+	//var mw *msdasdMW = &msdasdMW{
+	//	counter: 0,
+	//}
 	//crawler.Init("TestForCrawler", 4, 4)
 	SpiderInit(&crawler, "TestForCrawler", 4, 4)
-	SetResponseMiddleware(&crawler, mw)
+	//SetResponseMiddleware(&crawler, mw)
 	//SetRequestMiddleWares(&crawler,)
 	var f = StartRequest
 	SetStartingFunction(&crawler, &f)
@@ -121,4 +122,21 @@ func TestForCrawler() {
 
 	fp.Close()
 
+}
+
+func TestBaseReqCacheLocalStorage() {
+	var crawler = Crawler{}
+	SpiderInit(&crawler, "TestForCrawler", 4, 4)
+	cache := NewBaseReqCache(&crawler, 10, 100, "")
+	for i := 0; i < 1000; i++ {
+		obj := BaseRequestObj{}
+		obj.URL = "test." + strconv.FormatInt(int64(i), 10)
+		cache.Store(&obj)
+		fmt.Println("Has been storage obj:", i, ",total size:", cache.CurSize(), ",cache size:", cache.cacheSize, ",url:", obj.URL)
+	}
+	for i := 0; i < 1000; i++ {
+		obj := cache.Load()
+		fmt.Println("Load from storage obj:", i, ",total size:", cache.CurSize(), ",cache size:", cache.cacheSize, ",url:", obj.URL)
+	}
+	fmt.Println("complete cache test total size:", cache.CurSize(), ",cache size:", cache.cacheSize)
 }

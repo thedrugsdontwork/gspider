@@ -6,7 +6,6 @@ import (
 	"io/ioutil"
 	"net/http"
 	"strings"
-	"sync"
 )
 
 type RequestInfo struct {
@@ -27,60 +26,6 @@ type BaseRequestObj struct {
 	Callback   func(obj *BaseResponseObj) []*BaseRequestObj
 	Errback    func(obj *BaseResponseObj) []*BaseRequestObj
 	RetryTimes int
-}
-type BaseReqCacheObj struct {
-	/*fifo*/
-
-	next *BaseReqCacheObj
-	val  *BaseRequestObj
-}
-type BaseReqCache struct {
-	size int
-	head *BaseReqCacheObj
-	m    sync.Mutex
-}
-
-func (brc *BaseReqCache) Load() *BaseRequestObj {
-	/*
-		return the last object and reduce the size
-	*/
-	var res *BaseRequestObj = nil
-	brc.m.Lock()
-
-	if brc.size > 0 {
-		var tmp *BaseReqCacheObj = brc.head
-		var pre *BaseReqCacheObj = brc.head
-
-		for tmp.next != nil {
-			pre = tmp
-			tmp = tmp.next
-		}
-		if brc.size == 1 {
-			brc.head = nil
-		} else {
-			pre.next = nil
-		}
-		brc.size--
-		res = tmp.val
-	}
-	brc.m.Unlock()
-	return res
-}
-func (brc *BaseReqCache) Store(obj *BaseRequestObj) {
-	/*
-		store the obj in head and add to the size
-	*/
-	brc.m.Lock()
-	var tmp = BaseReqCacheObj{
-		next: brc.head,
-		val:  obj,
-	}
-	brc.head = &tmp
-	brc.size++
-	brc.m.Unlock()
-}
-func (brc *BaseReqCache) CurSize() int {
-	return brc.size
 }
 
 var Methods = []string{http.MethodGet, http.MethodDelete, http.MethodHead, http.MethodOptions, http.MethodConnect, http.MethodPost, http.MethodPut, http.MethodTrace, http.MethodPatch}

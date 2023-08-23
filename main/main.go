@@ -25,5 +25,6 @@ func test() {
 	)
 }
 func main() {
+	//GSpider.TestBaseReqCacheLocalStorage()
 	GSpider.TestForCrawler()
 }
